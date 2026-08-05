@@ -38,23 +38,36 @@ CTA_CARD = PF / "story_assets/cta_grant_card.png"
 W, HGT, FPS = 1080, 1920, 30
 MAX_CARDS = 2
 
-NOIR = ("Graphic novel noir style, high-contrast hard-edged ink shading over deep "
-        "teal and black tones, bold graphic shapes with clean silhouettes, one "
-        "golden accent color only, halftone print texture, dramatic low-key "
-        "cinematic lighting, no text, no watermarks")
+# Стиль утверждён владельцем 05.08 (вместо нуара — «вышло мрачно»):
+# пластилиновый стоп-моушен для сцен + песочная анимация для абстракций.
+# Формула вставляется в КАЖДЫЙ промпт байт-в-байт — это весь механизм
+# консистентности стиля (как раньше нуар-формула).
+CLAY = ("Claymation stop-motion animation style, handmade plasticine characters "
+        "and props with visible fingerprints and clay texture, miniature "
+        "handcrafted set, warm soft studio lighting, rich natural colors, "
+        "charming handmade film feel, no text, no watermarks")
+SAND = ("Sand animation style: backlit golden sand on a glass surface, glowing "
+        "warm amber monochrome, soft glow, expressive hand-drawn sand strokes, "
+        "no text, no watermarks")
+NOIR = CLAY  # легаси-алиас: старые вызовы получают новую формулу
 
-SHOTLIST_PROMPT = """Ты арт-директор смысловых вертикальных видео (нуар-формат Айплюс).
+SHOTLIST_PROMPT = """Ты арт-директор смысловых вертикальных видео Айплюс. Формат:
+ПЛАСТИЛИНОВЫЙ СТОП-МОУШЕН (сцены с персонажами) + ПЕСОЧНАЯ АНИМАЦИЯ (абстракции).
 Ниже фразы озвучки с таймингами. Разбей ролик на 14-20 планов.
 
 ПРАВИЛА (нарушение = брак):
 1. План живёт 2-6 секунд (границы планов = границы фраз, стык в стык).
-2. Каждый план — ОДИН нуар-кадр: image_prompt на английском, конкретная сцена
-   (композиция, свет: ровно один золотой источник). БЕЗ различимых лиц: силуэты,
-   спины, руки, предметы, среды. Интерьеры современные 2026, никаких ковров.
-3. motion_prompt: ОДИН жест + камера (одно движение или static), по-английски.
-4. Приёмы: ~30% метафоры (лестница+свет=путь, банка с монетами=инвестиция,
-   развилка=выбор, гора книг=объём, горящие купюры=потеря, полупрозрачные
-   конкуренты, тень орла=потенциал), ~40% прямые иллюстрации, ~25% атмосфера.
+2. Каждый план — ОДИН кадр: image_prompt на английском, конкретная сцена
+   (композиция, свет). Персонажи — пластилиновые человечки с ВЫРАЗИТЕЛЬНЫМИ
+   эмоциями (лица разрешены и нужны — это кукольный стиль, не реализм).
+   Семья казахская, современный Казахстан 2026: никаких ковров на стенах
+   и советской мебели. Стиль-формулу НЕ пиши — её добавит код.
+3. motion_prompt: ОДИН жест + камера (одно движение или static), по-английски,
+   движение лёгкое кукольное (стоп-моушен, не плавная камера-долли).
+4. Приёмы: ~30% метафоры-абстракции — их помечай "sand": true (рендерятся
+   ЗОЛОТЫМ ПЕСКОМ на стекле: расходящиеся дорожки=выбор, гора=цель, весы,
+   растущее дерево=рост, песочные часы=время); ~40% прямые пластилиновые
+   сцены; ~25% атмосфера (миниатюрные среды: класс, кухня, зал).
 5. flash=true на планах, ЗАВЕРШАЮЩИХ смысловое звено (3-5 вспышек на ролик).
 6. Сквозной объект: предмет из хука возвращается ближе к финалу (закольцовка).
 7. Последний план = CTA (кадры не нужны): "cta": true, без промптов.
@@ -65,7 +78,7 @@ SHOTLIST_PROMPT = """Ты арт-директор смысловых верти�
 
 Верни СТРОГО JSON:
 {{"shots": [{{"from": 0, "to": 1, "image_prompt": "...", "motion_prompt": "...",
-"flash": false, "cta": false}}]}}
+"flash": false, "sand": false, "cta": false}}]}}
 where from/to — индексы первой и последней фразы плана."""
 
 
@@ -201,7 +214,8 @@ def gen_shot(card_id, i, shot, need):
     vid = WORK / f"card{card_id}_s{i:02d}.mp4"
     if vid.exists() and vid.stat().st_size > 200_000:
         return vid  # кеш пересборки
-    prompt = shot["image_prompt"].rstrip(". ") + ". " + NOIR
+    prompt = shot["image_prompt"].rstrip(". ") + ". " + (
+        SAND if shot.get("sand") else CLAY)
     url = None
     for model, extra in (("nano_banana", []),
                          ("gpt_image_2", ["--resolution", "1k", "--quality", "medium"])):
@@ -213,13 +227,26 @@ def gen_shot(card_id, i, shot, need):
         raise RuntimeError(f"план {i}: кадр не сгенерился")
     dl(url, img)
     d = str(min(6, max(3, int(need) + 1)))
-    motion = ("Keep the exact noir graphic novel style of the image, same colors, "
-              "same halftone texture. " + shot["motion_prompt"])
+    if shot.get("sand"):
+        motion = ("Keep the exact sand animation style of the image, golden backlit "
+                  "sand on glass, the sand slowly flows and redraws itself. "
+                  + shot["motion_prompt"])
+    else:
+        motion = ("Keep the exact claymation stop-motion style of the image, same "
+                  "clay textures and colors, slightly jerky handmade stop-motion "
+                  "movement. " + shot["motion_prompt"])
     vurl = None
+    # Схемы моделей РАЗОШЛИСЬ (05.08): kling3_0_turbo больше НЕ принимает
+    # mode/sound (падал "Unknown params" → молчаливый фолбэк на дорогой
+    # kling3_0, 9 кр вместо 4.5-7.5). У kling3_0 sound/mode остались —
+    # там sound=off обязателен (звук = лишние кредиты).
     for model in ("kling3_0_turbo", "kling3_0"):
-        vurl = _hf(["generate", "create", model, "--prompt", motion,
-                    "--aspect_ratio", "9:16", "--duration", d, "--mode", "std",
-                    "--sound", "off", "--start-image", str(img)], 1200)
+        args = ["generate", "create", model, "--prompt", motion,
+                "--aspect_ratio", "9:16", "--duration", d,
+                "--start-image", str(img)]
+        if model == "kling3_0":
+            args += ["--mode", "std", "--sound", "off"]
+        vurl = _hf(args, 1200)
         if vurl:
             break
     if not vurl:
