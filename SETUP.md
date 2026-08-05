@@ -10,7 +10,8 @@
 | [ElevenLabs](https://elevenlabs.io) | озвучка | Starter ($5/мес) хватает |
 | [Google AI Studio](https://aistudio.google.com/apikey) | тайминги фраз, чекеры | бесплатный ключ |
 | [Higgsfield](https://higgsfield.ai) | кадры + анимация Kling | Creator (~$35/мес, 6000 кредитов; ролик ≈ 50-70 кредитов) |
-| [Claude](https://claude.com/claude-code) | сценарист и раскадровщик | подписка Pro/Max |
+| [Claude](https://claude.com/claude-code) | сценарист, раскадровщик, судья тем | подписка Pro/Max |
+| [Apify](https://apify.com) | скаут трендов (парсинг Instagram) | ~$0.0027/пост; лучше 2-3 аккаунта с ключами (см. Шаг 7б) |
 | GitHub | этот репозиторий | — |
 
 ## Шаг 1. Системные зависимости
@@ -89,6 +90,28 @@ echo '{}' > ~/.aiplus-factory/tts_pronun.json
 - `scripts/meaning_writer.py`: `BRIDGES`, `CODEBOOK` — пути к docs/ (положи
   `docs/meaning_bridges.md` туда, куда указывает путь, или поправь путь).
 - `scripts/gen_voice_v7.py`: путь к тексту и выходной папке.
+
+## Шаг 7б. Скаут трендов (опционально, но это половина силы системы)
+
+Скаут сам находит темы по твоему пулу источников. Полная методика —
+`docs/trend_scouting.md`, настройка:
+
+1. **Apify**: зарегистрируйся на [apify.com](https://apify.com) → Settings →
+   API tokens → скопируй ключ. Лимиты у Apify месячные, поэтому мы держим
+   НЕСКОЛЬКО аккаунтов (у нас 6) и кладём все ключи через запятую:
+   `APIFY_API_TOKENS=key1,key2,key3` в `.env`. Скрипт ротирует их сам.
+   Для старта хватит одного ключа (free-кредитов Apify хватает на пробу).
+2. **Пул источников**: `cp sources.example.json sources.json` и заполни
+   СВОИМИ аккаунтами (у нас 107: новостники, школы, блогеры ниши —
+   категории и логика отбора в docs/trend_scouting.md).
+3. **Профиль бренда**: перепиши `docs/brand_profile.md` под свою нишу —
+   судья отбирает темы именно по нему (наш профиль оставлен как пример).
+4. Проверка (потратит центы):
+   `python scripts/trend_scout.py --limit-posts 3 --max-cost 0.2 --dry-run`
+5. Боевой режим — крон каждое утро:
+   `45 8 * * * cd <репо> && .venv/bin/python scripts/trend_scout.py >> ~/trend_scout.log 2>&1`
+   Найденные темы копятся в `ideas/INBOX.md` — выбираешь и запускаешь
+   производство (Шаг 9).
 
 ## Шаг 8. Первый прогон (проверка всех узлов по одному)
 

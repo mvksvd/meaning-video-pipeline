@@ -1,0 +1,16 @@
+{
+  "_comment": "Пул источников для trend_scout.py. Скопируй в sources.json и заполни СВОИМИ аккаунтами под свою нишу. Категории — как собран наш боевой пул (107 IG-аккаунтов): новостники дают свежие события, тематические аккаунты — героев ниши, блогеры — форматы и споры.",
+  "instagram": [
+    {"username": "digitalbusinesskazakhstan", "category": "news", "note": "деловые новости — герои-предприниматели"},
+    {"username": "bes.media_", "category": "news", "note": "новости КЗ — свежие события ежедневно"},
+    {"username": "almaty_news", "category": "news", "note": "городские новости — локальные герои"},
+    {"username": "nis_almaty_medeu", "category": "niche_orgs", "note": "аккаунты школ сети НИШ — олимпиады, победы учеников (у нас таких ~20)"},
+    {"username": "yes.matematika", "category": "niche_bloggers", "note": "образование-блогеры — форматы и темы, которые заходят ЦА"}
+  ],
+  "telegram": [
+    {"username": "example_channel", "note": "TG-каналы парсим отдельным клиентом (Telethon), в этот скрипт не входит"}
+  ],
+  "sites": [
+    {"url": "https://example.kz/news", "note": "HTML-источники парсим отдельно, в этот скрипт не входит"}
+  ]
+}

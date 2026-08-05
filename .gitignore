@@ -4,3 +4,5 @@ __pycache__/
 *.mp4
 *.png
 *.jpg
+sources.json
+ideas/
