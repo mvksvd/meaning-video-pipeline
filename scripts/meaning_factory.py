@@ -34,7 +34,24 @@ SERGEY = "XuEV9VY3VUASYgJVNBh0"
 TRACK = H / "music_library/Blade_Runner_2049_-_Synthwave_Goose.mp3"
 TRACK_SS = 50.9
 VOL = 0.16
+AMB_VOL = 0.20   # фоновые звуки клипов; 06.08 владелец: тише на 5 дБ
 CTA_CARD = PF / "story_assets/cta_grant_card.png"
+
+
+def cta_card_for(script: dict):
+    """CTA-карта по кодовому слову карточки (инцидент 05.08: #16 со словом
+    МОТИВАЦИЯ получил стандартную грант-карту — чужое слово ломает лид-учёт).
+    Нет своей карты — фолбэк на грант."""
+    cw = str(script.get("codeword") or "").lower()
+    if "мотивац" in cw:
+        p = PF / "story_assets/cta_motivation_card.png"
+        if p.exists():
+            return p
+    if "пробел" in cw:
+        p = PF / "story_assets/cta_probely_card.png"
+        if p.exists():
+            return p
+    return CTA_CARD
 W, HGT, FPS = 1080, 1920, 30
 MAX_CARDS = 2
 
@@ -265,7 +282,7 @@ def ts(t):
     return f"0:{int(mm):02d}:{ss:05.2f}"
 
 
-def assemble(card_id, shots, phrases, clips, voice, out_path):
+def assemble(card_id, shots, phrases, clips, voice, out_path, script=None):
     tmp = WORK / f"card{card_id}_build"
     tmp.mkdir(exist_ok=True)
     total_end = phrases[-1]["end"] + 0.7
@@ -281,7 +298,10 @@ def assemble(card_id, shots, phrases, clips, voice, out_path):
         seg = tmp / f"seg{i:02d}.mp4"
         if sh.get("cta"):
             run(["ffmpeg", "-y", "-loglevel", "error", "-loop", "1", "-t", str(need),
-                 "-i", str(CTA_CARD), "-vf", VF_FIT, "-r", str(FPS), "-an", str(seg)])
+                 "-i", str(cta_card_for(script or {})), "-f", "lavfi", "-t", str(need),
+                 "-i", "anullsrc=r=44100:cl=stereo", "-vf", VF_FIT, "-r", str(FPS),
+                 "-c:v", "libx264", "-preset", "medium", "-crf", "19",
+                 "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(seg)])
         else:
             src = clips[i]
             d = dur_of(src)
@@ -289,13 +309,16 @@ def assemble(card_id, shots, phrases, clips, voice, out_path):
             if d < need:  # ИИ-анимация: тянуть можно (почти статика)
                 vf = f"setpts={need / d + 0.02:.3f}*PTS," + VF_FIT
             run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(src),
-                 "-vf", vf, "-t", str(need), "-an", str(seg)])
+                 "-vf", vf, "-af", "apad", "-t", str(need),
+                 "-c:v", "libx264", "-preset", "medium", "-crf", "19",
+                 "-pix_fmt", "yuv420p", "-c:a", "aac", "-ar", "44100",
+                 "-ac", "2", str(seg)])
         if sh.get("flash"):
             d2 = dur_of(seg)
             fl = tmp / f"seg{i:02d}f.mp4"
             run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(seg), "-vf",
                  f"negate=enable='gte(t,{max(0, d2 - 0.12):.2f})',format=yuv420p",
-                 "-an", str(fl)])
+                 "-c:a", "copy", str(fl)])
             seg = fl
         pieces.append(seg)
     lst = tmp / "list.txt"
@@ -303,13 +326,13 @@ def assemble(card_id, shots, phrases, clips, voice, out_path):
     nosub = tmp / "nosub.mp4"
     run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0",
          "-i", str(lst), "-c:v", "libx264", "-preset", "medium", "-crf", "19",
-         "-pix_fmt", "yuv420p", str(nosub)])
+         "-pix_fmt", "yuv420p", "-c:a", "aac", str(nosub)])
     ass = ["[Script Info]", f"PlayResX: {W}", f"PlayResY: {HGT}", "", "[V4+ Styles]",
            "Format: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, "
            "BackColour, Bold, Outline, Shadow, Alignment, MarginL, MarginR, "
            "MarginV, BorderStyle",
-           "Style: sub,DejaVu Sans,72,&H00FFFFFF,&H00000000,&H90000000,-1,3,0,2,"
-           "60,60,260,1", "", "[Events]",
+           "Style: sub,DejaVu Sans,69,&H00FFFFFF,&H00000000,&H90000000,-1,3,0,2,"
+           "60,60,360,1", "", "[Events]",   # 06.08: выше (IG-описание) и мельче
            "Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, "
            "Effect, Text"]
     for p in phrases:
@@ -321,13 +344,14 @@ def assemble(card_id, shots, phrases, clips, voice, out_path):
     withsubs = tmp / "subs.mp4"
     run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(nosub),
          "-vf", f"ass={tmp}/subs.ass", "-c:v", "libx264", "-preset", "medium",
-         "-crf", "19", str(withsubs)])
+         "-crf", "19", "-c:a", "copy", str(withsubs)])
     total = dur_of(withsubs)
     run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(withsubs), "-i", str(voice),
          "-stream_loop", "-1", "-ss", str(TRACK_SS), "-i", str(TRACK),
          "-filter_complex",
+         f"[0:a]volume={AMB_VOL}[amb];"
          f"[2:a]volume={VOL},atrim=0:{total},afade=t=out:st={total - 2:.1f}:d=2[m];"
-         f"[1:a][m]amix=inputs=2:duration=first:dropout_transition=0[a]",
+         f"[1:a][amb][m]amix=inputs=3:duration=first:dropout_transition=0[a]",
          "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
          "-t", str(total), str(out_path)])
     json.dump([{"i": i, "src": f"shot{i}", "start": s, "end": e,
@@ -366,7 +390,7 @@ async def process_card(db, sv):
             clips[i] = f.result()
             print(f"  план {i}: ok", flush=True)
     out = PF / f"meaning_card{cid}.mp4"
-    assemble(cid, shots, phrases, clips, voice, out)
+    assemble(cid, shots, phrases, clips, voice, out, script)
     chk = subprocess.run(
         [str(H / "aiplus-content-factory/backend/.venv/bin/python"),
          str(H / "joint_check.py"), str(out)], stdout=subprocess.PIPE,
