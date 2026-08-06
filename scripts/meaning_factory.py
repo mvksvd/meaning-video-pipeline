@@ -349,9 +349,12 @@ def assemble(card_id, shots, phrases, clips, voice, out_path, script=None):
     run(["ffmpeg", "-y", "-loglevel", "error", "-i", str(withsubs), "-i", str(voice),
          "-stream_loop", "-1", "-ss", str(TRACK_SS), "-i", str(TRACK),
          "-filter_complex",
-         f"[0:a]volume={AMB_VOL}[amb];"
+         # amix duration=first по ПЕРВОМУ входу: им обязан быть амбиент (длина =
+         # видео), а голос дополняется тишиной (apad). Инцидент 06.08: голос короче
+         # видео (карта после речи) → музыка обрывалась раньше конца ролика.
+         f"[0:a]volume={AMB_VOL}[amb];[1:a]apad[vp];"
          f"[2:a]volume={VOL},atrim=0:{total},afade=t=out:st={total - 2:.1f}:d=2[m];"
-         f"[1:a][amb][m]amix=inputs=3:duration=first:dropout_transition=0[a]",
+         f"[amb][vp][m]amix=inputs=3:duration=first:dropout_transition=0[a]",
          "-map", "0:v", "-map", "[a]", "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
          "-t", str(total), str(out_path)])
     json.dump([{"i": i, "src": f"shot{i}", "start": s, "end": e,
